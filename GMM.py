@@ -5,7 +5,7 @@ from matplotlib.patches import Ellipse
 import scipy as sc
 from scipy import random, linalg, stats, special
 
-random.seed(10)
+#random.seed(10)
 # parameters
 NClasses = 4
 NObjects = 200
@@ -65,6 +65,7 @@ y_true = np.vstack((y, v_true))
 # random shuffle the data points
 np.random.shuffle(y_true.T)
 y = y_true[0]
+print(y_true[1])
 #print(np.sort(y))
 fig = plt.figure()
 ax = fig.add_subplot(111)
@@ -110,5 +111,137 @@ def MStep(Tau, y, Mu):
     Var_new = Var_new.reshape(4,) / Tau.sum(0)
     return Pi_new, Mu_new, Var_new
 
+pi_n, Mu_n, Var_n = MStep(r_n, y, initMu)
 
 
+
+init_iteration = 10
+EM_iteration = 200  
+look_LH = 20
+
+for init in range(init_iteration):
+    initMu = np.random.random(NClasses)*max(y)
+    r_n = EStep(y, initPi, initMu, initVar)
+    pi_n, Mu_n, Var_n = MStep(r_n, y, initMu)
+    if init == 0:
+        logLH = -1000000000000
+    for i in range(EM_iteration):
+#       E_step
+        r_n = EStep(y, pi_n, Mu_n, Var_n)
+#       M_step
+        pi_n, Mu_n, Var_n = MStep(r_n, y, Mu_n)
+#       Compute LogLikelihood
+        logLall = np.zeros((y.shape[0]))
+        for Objects in range(y.shape[0]):
+            px = np.array([sc.stats.norm.pdf(y[Objects], Mu_n[j], np.sqrt(Var_n[j]))
+                            for j in range(NClasses)])
+            LH = np.dot(pi_n, px)
+            logLall[Objects] = np.log(LH)
+        logL = np.sum(logLall)
+        
+        if i > EM_iteration - look_LH:
+            print(logL)
+    if logL > logLH:
+        logLH = logL
+        print('found larger ', logLH)
+        pi_p = pi_n
+        Mu_p = Mu_n
+        Var_p = Var_n
+        r_p = r_n
+
+# let plot the result
+Mu_inf = np.sort(Mu_p)
+Mu = np.array(Mu).reshape(4,)
+Mu_true = np.sort(Mu)
+
+Var_inf = np.sort(Var_p)
+Var = np.array(Var).reshape(4,)
+Var_true = np.sort(Var)
+print(Mu_inf)
+print(Mu_true)
+
+# the figures
+# parameter 
+
+plotsize = 11
+sizeMean = 20
+text_size = 16
+axis_font = {'fontname':'Arial', 'size':'24'}
+Title_font = {'fontname':'Arial', 'size':'28'}
+x = range(1,NClasses+1)
+startx = 0
+endx = 5
+stepsizex = 1
+starty = -2
+endy = max(y)
+stepsizey = 10
+
+# figure
+fig = plt.figure()
+ax1 = fig.add_subplot(2,2,1)
+ax2 = fig.add_subplot(2,2,2)
+#means
+ax1.plot(x, Mu_inf, 'k.', markersize=sizeMean, label='Learned')
+ax1.plot(x, Mu_true, 'r.', markersize=sizeMean, label='True')
+#means
+ax2.plot(x, Var_inf, 'k.', markersize=sizeMean, label='Learned')
+ax2.plot(x, Var_true, 'r.', markersize=sizeMean, label='True')
+
+for label in (ax1.get_xticklabels() + ax.get_yticklabels()):
+    label.set_fontname('Arial')
+    label.set_fontsize(text_size)
+ax1.spines['right'].set_visible(False)
+ax1.spines['top'].set_visible(False)
+ax1.xaxis.set_ticks_position('bottom')
+ax1.yaxis.set_ticks_position('left')
+ax1.xaxis.set_ticks(np.arange(startx, endx, stepsizex))
+ax1.yaxis.set_ticks(np.arange(starty, endy, stepsizey))
+ax1.set_xlim([startx, endx])
+ax1.set_ylim([starty, endy])
+ax1.set_ylabel('Mean', **axis_font)
+ax1.legend(loc='upper left',fontsize=text_size-6)
+ax1.set_title('Mean', y=1.08, **Title_font)
+ax1.figure.set_size_inches(plotsize,plotsize)
+
+for label in (ax2.get_xticklabels() + ax.get_yticklabels()):
+    label.set_fontname('Arial')
+    label.set_fontsize(text_size)
+ax2.spines['right'].set_visible(False)
+ax2.spines['top'].set_visible(False)
+ax2.xaxis.set_ticks_position('bottom')
+ax2.yaxis.set_ticks_position('left')
+ax2.xaxis.set_ticks(np.arange(startx, endx, stepsizex))
+ax2.yaxis.set_ticks(np.arange(starty, endy, stepsizey))
+ax2.set_xlim([startx, endx])
+ax2.set_ylim([starty, endy])
+ax2.set_ylabel('Variance', **axis_font)
+ax2.legend(loc='upper left',fontsize=text_size-6)
+ax2.set_title('Variance', y=1.08, **Title_font)
+ax2.figure.set_size_inches(plotsize,plotsize)
+
+plt.suptitle('Comparing the true parameters to the inferred parameters',**Title_font)
+fig.subplots_adjust(top=0.85)
+plt.savefig('compare.png')
+
+print('The infered parameters')
+print('Mixing proportion', pi_p)
+print('Mean', Mu_p)
+print('Variances', Var_p)
+
+print('The true patameters')
+print('Mixing proportion', r)
+print('Mean', Mu)
+print('Variances', Var)
+
+GoodOrder = [2,1,0,3]
+r_ordered = r_p[:,GoodOrder] 
+infClusters = np.argmax(r_ordered, axis=1)
+Clustering = y_true[1]==infClusters+1
+
+count = 0
+for i in range(y.shape[0]):
+    for j in range(NClasses):
+        if r_p[i][j] == np.max(r_p[i]) and float(j+1) == y_true[1][i]:
+            count += 1
+
+        
